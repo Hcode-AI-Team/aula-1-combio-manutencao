@@ -4,6 +4,7 @@ import { getDatabaseConfig } from './config/database.config';
 import { UpvsModule } from './upvs/upvs.module';
 import { EquipamentosModule } from './equipamentos/equipamentos.module';
 import { OrdensModule } from './ordens/ordens.module';
+import { RelatoriosModule } from './relatorios/relatorios.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { OrdensModule } from './ordens/ordens.module';
     UpvsModule,
     EquipamentosModule,
     OrdensModule,
+    RelatoriosModule,
   ],
 })
 export class AppModule {}
