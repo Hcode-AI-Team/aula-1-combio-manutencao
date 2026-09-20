@@ -84,6 +84,14 @@ Remove-Item -Recurse -Force backend/node_modules, frontend/node_modules -ErrorAc
 npm run install:all
 ```
 
+**`Cannot find module '.../dist/main'`**
+
+O backend tentou subir antes de gerar os arquivos. Pare o terminal (Ctrl+C) e rode de novo:
+
+```bash
+npm run start:backend
+```
+
 **Porta 3000 ou 4200 já em uso (`EADDRINUSE`)**
 
 Algum processo antigo ficou aberto. Feche o terminal onde o servidor está rodando (Ctrl+C) e tente de novo. Se persistir, reinicie o computador ou mate o processo que está na porta.
