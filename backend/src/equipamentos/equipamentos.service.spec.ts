@@ -67,4 +67,42 @@ describe('EquipamentosService', () => {
 
     await expect(service.create(dto)).resolves.toEqual(created);
   });
+
+  it('deve listar todos os equipamentos quando não há filtro', async () => {
+    const lista = [{ id: 1 }, { id: 2 }] as Equipamento[];
+    equipamentoRepository.find.mockResolvedValue(lista);
+
+    await expect(service.findAll()).resolves.toEqual(lista);
+    expect(equipamentoRepository.find).toHaveBeenCalledWith({
+      relations: ['upv'],
+    });
+  });
+
+  // upvId igual a 0 é falsy e cai no ramo sem filtro, mesmo sendo um número.
+  it('deve ignorar o filtro quando o upvId é 0', async () => {
+    equipamentoRepository.find.mockResolvedValue([]);
+
+    await service.findAll(0);
+
+    expect(equipamentoRepository.find).toHaveBeenCalledWith({
+      relations: ['upv'],
+    });
+  });
+
+  it('deve vincular a UPV encontrada ao equipamento criado', async () => {
+    const upv = { id: 3, nome: 'UPV Teste' } as Upv;
+    upvRepository.findOne.mockResolvedValue(upv);
+    equipamentoRepository.create.mockImplementation(
+      (dados: Partial<Equipamento>) => dados as Equipamento,
+    );
+    equipamentoRepository.save.mockImplementation(async (e: Equipamento) => e);
+
+    await service.create({ tag: 'LP-TUR-02', tipo: 'turbina', upvId: 3 });
+
+    expect(equipamentoRepository.create).toHaveBeenCalledWith({
+      tag: 'LP-TUR-02',
+      tipo: 'turbina',
+      upv,
+    });
+  });
 });

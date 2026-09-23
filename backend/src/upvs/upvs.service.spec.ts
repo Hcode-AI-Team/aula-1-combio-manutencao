@@ -49,4 +49,28 @@ describe('UpvsService', () => {
 
     await expect(service.create(dto)).resolves.toEqual(created);
   });
+
+  it('deve devolver a UPV encontrada', async () => {
+    const upv = { id: 3, nome: 'UPV Barra Bonita' } as Upv;
+    upvRepository.findOne.mockResolvedValue(upv);
+
+    await expect(service.findOne(3)).resolves.toEqual(upv);
+    expect(upvRepository.findOne).toHaveBeenCalledWith({ where: { id: 3 } });
+  });
+
+  it('deve persistir a entidade montada a partir do dto', async () => {
+    const dto: CreateUpvDto = {
+      nome: 'UPV Nova',
+      cidade: 'Piracicaba',
+      estado: 'SP',
+      capacidadeMw: 12,
+    };
+    upvRepository.create.mockImplementation((dados: Partial<Upv>) => dados);
+    upvRepository.save.mockImplementation(async (u: Upv) => u);
+
+    await service.create(dto);
+
+    expect(upvRepository.create).toHaveBeenCalledWith(dto);
+    expect(upvRepository.save).toHaveBeenCalledWith(dto);
+  });
 });
