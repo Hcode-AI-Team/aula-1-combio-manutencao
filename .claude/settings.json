@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/documentacao-automatica.mjs\"",
+            "timeout": 30,
+            "statusMessage": "Verificando se a documentação está em dia..."
+          }
+        ]
+      }
+    ]
+  }
+}

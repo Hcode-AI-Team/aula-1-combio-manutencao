@@ -1,0 +1,14 @@
+{
+  "caixas": [
+    {"id": "fluig",   "texto": "Fluig\nGatilho: NF-e aprovada", "tipo": "ancora",        "col": 0, "linha": 0},
+    {"id": "datasul", "texto": "Datasul\nRetorna dados da nota", "tipo": "intermediario", "col": 1, "linha": 0},
+    {"id": "melius",  "texto": "Melius\nUpload do XML",          "tipo": "destino",       "col": 2, "linha": 0},
+    {"id": "erro",    "texto": "Nota presa > 48h\nLiberação manual monitorada", "tipo": "erro", "col": 1, "linha": 1}
+  ],
+  "setas": [
+    {"de": "fluig",   "para": "datasul", "rotulo": "POST esp/v1/piRetornaDadosNota"},
+    {"de": "datasul", "para": "melius",  "rotulo": "POST /api/v1/nfs/files/upload"},
+    {"de": "datasul", "para": "erro",    "rotulo": "falha ou timeout"}
+  ],
+  "legenda": "Fluxo de envio da NF-e do Fluig para a Melius, com a rota de exceção para notas retidas."
+}

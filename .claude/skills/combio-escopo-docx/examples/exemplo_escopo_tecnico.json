@@ -1,0 +1,112 @@
+{
+  "tipo": "tecnico",
+  "cabecalho": "ESCOPO TÉCNICO",
+  "eyebrow": "ESCOPO TÉCNICO",
+  "titulo": "Envio automático de NF-e do Fluig para a Melius",
+  "subtitulo": "Documento para validação interna e posterior encaminhamento à TI. Execução e publicação seguem pelo ServiceUP.",
+  "secoes": [
+    {
+      "faixa": "1. IDENTIFICAÇÃO E METADADOS",
+      "blocos": [
+        {"t": "campos", "colunas": 2, "linhas": [
+          ["Plataforma:", "Fluig · Datasul · Melius"],
+          ["Solicitante:", "Rafael Araújo — TI"],
+          ["Data:", "11/09/2026"],
+          ["Versão:", "1.0"],
+          ["Responsável Técnico TI:", "a definir"],
+          ["Anexos:", "Collection Postman, ata de 04/09"]
+        ]}
+      ]
+    },
+    {
+      "faixa": "2. INFORMAÇÕES DA DEMANDA",
+      "blocos": [
+        {"t": "subtitulo", "texto": "2.1 Problema e causa"},
+        {"t": "paragrafo", "texto": "O envio do XML da NF-e à Melius é feito manualmente pelo fiscal, arquivo a arquivo. Em agosto/2026 foram **312 notas** enviadas à mão, com média de **4 min por nota** (~21 h/mês) e 7 notas retidas por mais de 48 h, o que gera risco de multa por atraso na escrituração."},
+        {"t": "subtitulo", "texto": "2.2 Objetivo"},
+        {"t": "bullets", "itens": [
+          "Enviar o XML da NF-e à Melius automaticamente em até 15 minutos após a aprovação no Fluig",
+          "Eliminar as ~21 h/mês de trabalho manual do time fiscal",
+          "Registrar em log o resultado de cada envio, com rastreabilidade por número de nota"
+        ]}
+      ]
+    },
+    {
+      "faixa": "3. PLANEJAMENTO E ARQUITETURA",
+      "blocos": [
+        {"t": "subtitulo", "texto": "3.1 Endpoints"},
+        {"t": "tabela",
+         "colunas": ["Sistema", "Finalidade", "Método / Endpoint", "Autenticação"],
+         "larguras": [1.4, 2.4, 3.4, 1.8],
+         "linhas": [
+           ["Datasul", "Retorna dados e xmlNFe da nota", "POST esp/v1/piRetornaDadosNota", "Basic — credenciais geridas pela TI em cofre de segredos"],
+           ["Melius", "Obtém token de sessão", "POST /api/v1/auth/login", "Bearer — credenciais geridas pela TI em cofre de segredos"],
+           ["Melius", "Envia o XML em base64", "POST /api/v1/nfs/files/upload", "Bearer"]
+         ]},
+        {"t": "callout", "texto": "As credenciais de exemplo presentes na collection anexa são de teste e **não devem ir para produção**. Provisionamento e rotação ficam com a TI, via ServiceUP.", "cor": "warn"}
+      ]
+    },
+    {
+      "faixa": "4. DESENVOLVIMENTO",
+      "blocos": [
+        {"t": "subtitulo", "texto": "4.1 Fluxo"},
+        {"t": "numerado", "itens": [
+          "Gatilho: aprovação da NF-e no workflow do Fluig.",
+          "Fluig consulta a nota no Datasul via `POST esp/v1/piRetornaDadosNota` e extrai o campo `xmlNFe`.",
+          "Fluig autentica na Melius e recebe o token Bearer.",
+          "Fluig converte o XML em base64 e envia via `POST /api/v1/nfs/files/upload`.",
+          "Retorno 2xx: grava protocolo e data no processo do Fluig.",
+          "Erro ou timeout: nova tentativa em 30 min (até 3 vezes); persistindo, abre pendência e notifica o fiscal para liberação manual monitorada."
+        ]},
+        {"t": "subtitulo", "texto": "4.2 Diagrama"},
+        {"t": "imagem", "arquivo": "examples/diagrama_exemplo.png", "largura_px": 560,
+         "legenda": "Fluxo de envio da NF-e do Fluig para a Melius, com a rota de exceção para notas retidas."}
+      ]
+    },
+    {
+      "faixa": "5. HOMOLOGAÇÃO E TESTES",
+      "blocos": [
+        {"t": "tabela",
+         "colunas": ["Caso de teste", "Tipo", "Resultado esperado"],
+         "larguras": [3.2, 1.4, 4.4],
+         "linhas": [
+           ["Nota válida com XML presente", "Integrado", "Protocolo gravado no processo do Fluig em até 15 min"],
+           ["Nota sem `xmlNFe` no Datasul", "Unitário", "Pendência aberta com motivo 'XML ausente'; nenhum envio disparado"],
+           ["Melius indisponível (HTTP 5xx)", "Integrado", "3 tentativas em 30 min e, persistindo, notificação ao fiscal"],
+           ["Token Bearer expirado", "Unitário", "Reautenticação automática e reenvio na mesma execução"]
+         ]}
+      ]
+    },
+    {
+      "faixa": "6. GOVERNANÇA",
+      "blocos": [
+        {"t": "bullets", "itens": [
+          "Documentação da arquitetura e manual de parametrização entregues à TI",
+          "Relatório de testes com os quatro casos acima, assinado pelo responsável técnico",
+          "Status report semanal durante a execução",
+          "Publicação, deploy e credenciais de produção: ServiceUP/TI — fora do escopo deste documento"
+        ]}
+      ]
+    },
+    {
+      "faixa": "7. GO LIVE E OPERAÇÃO ASSISTIDA",
+      "blocos": [
+        {"t": "paragrafo", "texto": "Operação assistida de **15 dias corridos** após o go live, com canal pelo ServiceUP e acompanhamento diário do volume de notas enviadas e retidas."},
+        {"t": "callout", "texto": "A definir com a TI: data do go live e responsável técnico designado. Registrado em Pendências."}
+      ]
+    },
+    {
+      "faixa": "8. PENDÊNCIAS",
+      "blocos": [
+        {"t": "tabela",
+         "colunas": ["#", "Pendência", "Status"],
+         "larguras": [0.6, 6.4, 2.0],
+         "linhas": [
+           ["1", "Provisionamento das credenciais de produção em cofre", "⚠ Dependente (TI)"],
+           ["2", "Data do go live", "⚠ A definir"],
+           ["3", "Homologação do retorno de protocolo pelo fiscal", "✓ Confirmado"]
+         ]}
+      ]
+    }
+  ]
+}
