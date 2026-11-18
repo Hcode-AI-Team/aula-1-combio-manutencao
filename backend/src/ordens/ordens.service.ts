@@ -1,10 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OrdemManutencao, StatusOrdem } from './ordem-manutencao.entity';
 import { CreateOrdemDto } from './dto/create-ordem.dto';
 import { UpdateOrdemDto } from './dto/update-ordem.dto';
 import { Equipamento } from '../equipamentos/equipamento.entity';
+import {
+  TransicaoStatusInvalidaError,
+  validarTransicao,
+} from './domain/transicao-status';
 
 @Injectable()
 export class OrdensService {
@@ -57,9 +65,16 @@ export class OrdensService {
 
   async update(id: number, dto: UpdateOrdemDto): Promise<OrdemManutencao> {
     const ordem = await this.findOne(id);
-    Object.assign(ordem, dto);
-    if (dto.status === 'concluida' && !ordem.concluidaEm) {
-      ordem.concluidaEm = new Date();
+    // Valida o status antes de tocar em qualquer campo: transição proibida
+    // não pode deixar a ordem parcialmente alterada.
+    if (dto.status !== undefined) {
+      this.aplicarStatus(ordem, dto.status);
+    }
+    if (dto.descricao !== undefined) ordem.descricao = dto.descricao;
+    if (dto.tipo !== undefined) ordem.tipo = dto.tipo;
+    if (dto.prioridade !== undefined) ordem.prioridade = dto.prioridade;
+    if (dto.custoEstimado !== undefined) {
+      ordem.custoEstimado = dto.custoEstimado;
     }
     return this.ordemRepository.save(ordem);
   }
@@ -69,10 +84,26 @@ export class OrdensService {
     status: StatusOrdem,
   ): Promise<OrdemManutencao> {
     const ordem = await this.findOne(id);
-    ordem.status = status;
-    if (status === 'concluida') {
+    this.aplicarStatus(ordem, status);
+    return this.ordemRepository.save(ordem);
+  }
+
+  // Caminho único de mudança de status para update() e updateStatus().
+  private aplicarStatus(ordem: OrdemManutencao, para: StatusOrdem): void {
+    try {
+      validarTransicao(ordem.status, para);
+    } catch (erro: unknown) {
+      if (erro instanceof TransicaoStatusInvalidaError) {
+        throw new ConflictException(erro.message);
+      }
+      throw erro;
+    }
+    if (ordem.status === para) {
+      return;
+    }
+    ordem.status = para;
+    if (para === 'concluida' && !ordem.concluidaEm) {
       ordem.concluidaEm = new Date();
     }
-    return this.ordemRepository.save(ordem);
   }
 }
