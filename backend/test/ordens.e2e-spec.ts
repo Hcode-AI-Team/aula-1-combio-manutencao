@@ -193,4 +193,74 @@ describe('Ordens (e2e)', () => {
       .send({ status: 'concluida' })
       .expect(404);
   });
+
+  describe('máquina de estados (D1)', () => {
+    async function criarOrdemNoStatus(status: string): Promise<number> {
+      const criada = await request(app.getHttpServer())
+        .post('/ordens')
+        .send(novaOrdem())
+        .expect(201);
+      if (status !== 'aberta') {
+        await request(app.getHttpServer())
+          .patch(`/ordens/${criada.body.id}/status`)
+          .send({ status })
+          .expect(200);
+      }
+      return criada.body.id;
+    }
+
+    it('percorre aberta → em_execucao → aberta → concluida', async () => {
+      const id = await criarOrdemNoStatus('aberta');
+      for (const status of ['em_execucao', 'aberta', 'concluida']) {
+        const res = await request(app.getHttpServer())
+          .patch(`/ordens/${id}/status`)
+          .send({ status })
+          .expect(200);
+        expect(res.body.status).toBe(status);
+      }
+    });
+
+    it.each([
+      ['/status', 'concluida', 'aberta'],
+      ['/status', 'cancelada', 'em_execucao'],
+      ['', 'concluida', 'cancelada'],
+      ['', 'cancelada', 'concluida'],
+    ])(
+      'PATCH /ordens/:id%s responde 409 de %s para %s',
+      async (sufixo, de, para) => {
+        const id = await criarOrdemNoStatus(de);
+
+        const res = await request(app.getHttpServer())
+          .patch(`/ordens/${id}${sufixo}`)
+          .send({ status: para })
+          .expect(409);
+
+        expect(res.body.message).toBe(
+          `Transição de status inválida: ${de} → ${para}`,
+        );
+        const atual = await request(app.getHttpServer())
+          .get(`/ordens/${id}`)
+          .expect(200);
+        expect(atual.body.status).toBe(de);
+      },
+    );
+
+    it.each(['/status', ''])(
+      'PATCH /ordens/:id%s com o mesmo status é idempotente e preserva concluidaEm',
+      async (sufixo) => {
+        const id = await criarOrdemNoStatus('concluida');
+        const antes = await request(app.getHttpServer())
+          .get(`/ordens/${id}`)
+          .expect(200);
+
+        const res = await request(app.getHttpServer())
+          .patch(`/ordens/${id}${sufixo}`)
+          .send({ status: 'concluida' })
+          .expect(200);
+
+        expect(res.body.status).toBe('concluida');
+        expect(res.body.concluidaEm).toBe(antes.body.concluidaEm);
+      },
+    );
+  });
 });

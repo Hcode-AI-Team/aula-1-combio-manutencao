@@ -1,5 +1,6 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrdensService } from './ordens.service';
+import * as transicaoStatus from './domain/transicao-status';
 import { OrdemManutencao } from './ordem-manutencao.entity';
 import { Equipamento } from '../equipamentos/equipamento.entity';
 import { CreateOrdemDto } from './dto/create-ordem.dto';
@@ -167,6 +168,76 @@ describe('OrdensService', () => {
         service.update(123, { descricao: 'x' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('deve aplicar tipo, prioridade e custo estimado', async () => {
+      const ordem = {
+        id: 5,
+        status: 'aberta',
+        tipo: 'preventiva',
+        prioridade: 1,
+        custoEstimado: 100,
+      } as OrdemManutencao;
+      ordemRepository.findOne.mockResolvedValue(ordem);
+      ordemRepository.save.mockImplementation(async (o: OrdemManutencao) => o);
+
+      const result = await service.update(5, {
+        tipo: 'corretiva',
+        prioridade: 3,
+        custoEstimado: 0,
+      });
+
+      expect(result.tipo).toBe('corretiva');
+      expect(result.prioridade).toBe(3);
+      expect(result.custoEstimado).toBe(0);
+    });
+
+    it('deve permitir editar campos de ordem finalizada sem mudar o status', async () => {
+      const ordem = {
+        id: 5,
+        status: 'concluida',
+        descricao: 'Antiga',
+      } as OrdemManutencao;
+      ordemRepository.findOne.mockResolvedValue(ordem);
+      ordemRepository.save.mockImplementation(async (o: OrdemManutencao) => o);
+
+      const result = await service.update(5, { descricao: 'Nova' });
+
+      expect(result.descricao).toBe('Nova');
+      expect(result.status).toBe('concluida');
+    });
+
+    it('deve responder 409 na transição proibida sem alterar nenhum campo', async () => {
+      const ordem = {
+        id: 5,
+        status: 'cancelada',
+        descricao: 'Original',
+      } as OrdemManutencao;
+      ordemRepository.findOne.mockResolvedValue(ordem);
+
+      const promessa = service.update(5, {
+        status: 'aberta',
+        descricao: 'Tentativa',
+      });
+
+      await expect(promessa).rejects.toBeInstanceOf(ConflictException);
+      await expect(promessa).rejects.toThrow(
+        'Transição de status inválida: cancelada → aberta',
+      );
+      expect(ordem.status).toBe('cancelada');
+      expect(ordem.descricao).toBe('Original');
+      expect(ordemRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('deve permitir voltar de em_execucao para aberta', async () => {
+      const ordem = { id: 5, status: 'em_execucao' } as OrdemManutencao;
+      ordemRepository.findOne.mockResolvedValue(ordem);
+      ordemRepository.save.mockImplementation(async (o: OrdemManutencao) => o);
+
+      const result = await service.update(5, { status: 'aberta' });
+
+      expect(result.status).toBe('aberta');
+      expect(result.concluidaEm).toBeUndefined();
+    });
   });
 
   describe('updateStatus', () => {
@@ -191,10 +262,9 @@ describe('OrdensService', () => {
       expect(result.concluidaEm).toBeInstanceOf(Date);
     });
 
-    // Diferente de update(), updateStatus() sempre sobrescreve a data de
-    // conclusão. A assimetria entre os dois métodos é intencional aqui apenas
-    // no sentido de estar documentada, não de ser desejável.
-    it('deve sobrescrever a data de conclusão já existente', async () => {
+    // D1: a antiga assimetria (updateStatus sobrescrevia concluidaEm) foi
+    // eliminada. Agora os dois métodos preservam a data da primeira conclusão.
+    it('deve preservar a data de conclusão já existente (idempotente)', async () => {
       const concluidaEm = new Date('2026-01-10T12:00:00Z');
       const ordem = {
         id: 5,
@@ -206,7 +276,61 @@ describe('OrdensService', () => {
 
       const result = await service.updateStatus(5, 'concluida');
 
-      expect(result.concluidaEm).not.toBe(concluidaEm);
+      expect(result.concluidaEm).toBe(concluidaEm);
+    });
+
+    it('deve preencher concluidaEm só se ainda estiver vazia', async () => {
+      const concluidaEm = new Date('2026-01-10T12:00:00Z');
+      const ordem = {
+        id: 5,
+        status: 'em_execucao',
+        concluidaEm,
+      } as OrdemManutencao;
+      ordemRepository.findOne.mockResolvedValue(ordem);
+      ordemRepository.save.mockImplementation(async (o: OrdemManutencao) => o);
+
+      const result = await service.updateStatus(5, 'concluida');
+
+      expect(result.status).toBe('concluida');
+      expect(result.concluidaEm).toBe(concluidaEm);
+    });
+
+    it.each([
+      ['concluida', 'aberta'],
+      ['concluida', 'em_execucao'],
+      ['concluida', 'cancelada'],
+      ['cancelada', 'aberta'],
+      ['cancelada', 'em_execucao'],
+      ['cancelada', 'concluida'],
+    ] as const)(
+      'deve responder 409 na transição proibida %s → %s',
+      async (de, para) => {
+        const ordem = { id: 5, status: de } as OrdemManutencao;
+        ordemRepository.findOne.mockResolvedValue(ordem);
+
+        const promessa = service.updateStatus(5, para);
+
+        await expect(promessa).rejects.toBeInstanceOf(ConflictException);
+        await expect(promessa).rejects.toThrow(
+          `Transição de status inválida: ${de} → ${para}`,
+        );
+        expect(ordem.status).toBe(de);
+        expect(ordemRepository.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('deve repassar erros inesperados da validação sem convertê-los em 409', async () => {
+      const ordem = { id: 5, status: 'aberta' } as OrdemManutencao;
+      ordemRepository.findOne.mockResolvedValue(ordem);
+      const falha = new Error('falha inesperada');
+      const espiao = jest
+        .spyOn(transicaoStatus, 'validarTransicao')
+        .mockImplementation(() => {
+          throw falha;
+        });
+
+      await expect(service.updateStatus(5, 'cancelada')).rejects.toBe(falha);
+      espiao.mockRestore();
     });
 
     it('deve propagar NotFoundException quando a ordem não existe', async () => {
